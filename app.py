@@ -1,13 +1,11 @@
-# app.py – VERSÃO FINAL COM LARGURA MÁXIMA (ecrã cheio!)
+# app.py – VERSÃO FINAL COM LARGURA MÁXIMA + FELICIDADE
 import streamlit as st
 import pickle
 import os
 import streamlit.components.v1 as components
 
-# ← AQUI ESTÁ A MÁGICA: largura máxima total
 st.set_page_config(page_title="Melhores Vinhos da UE", layout="wide")
 
-# Força largura 100% + remove margens laterais
 st.markdown("""
 <style>
     .block-container {
@@ -24,11 +22,9 @@ st.markdown("""
 
 PICKLE_PATH = 'dados_notebook.pkl'
 
-# Header
 st.title("Melhores Vinhos da União Europeia em 2025 🍷🇪🇺")
 st.markdown("**Análise completa • 100% processada no Jupyter Notebook • Apresentação em ecrã cheio**")
 
-# Verificação de dados
 if not os.path.exists(PICKLE_PATH):
     st.error(f"Não encontrado: `{PICKLE_PATH}`\n\nRoda o notebook até ao fim primeiro!")
     st.stop()
@@ -36,14 +32,12 @@ if not os.path.exists(PICKLE_PATH):
 with open(PICKLE_PATH, 'rb') as f:
     dados = pickle.load(f)
 
-# Dados essenciais
 df_eu = dados.get('df_eu')
 ranking = dados.get('ranking')
 top_pais = dados.get('top_pais', 'N/D')
 top_pts = dados.get('top_pts')
 melhor_qp = dados.get('melhor_qp', 'N/D')
 
-# Métricas grandes no topo
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("Melhor qualidade média", top_pais, f"{top_pts} pts" if top_pts else "")
 col2.metric("Melhor custo-benefício", melhor_qp)
@@ -53,7 +47,7 @@ col5.metric("Países UE", len(ranking) if ranking is not None else "0")
 
 st.markdown("---")
 
-# Slides (mesma lógica que tinhas, mas com mais espaço)
+# Slides (SEM o folium, COM o happiness)
 slides = []
 
 if dados.get('fig_mapa_html') and os.path.exists(dados['fig_mapa_html']):
@@ -64,14 +58,12 @@ if dados.get('fig_box_path') and os.path.exists(dados['fig_box_path']):
     slides.append({"title": "Distribuição da Pontuação – Top 5 Países", "type": "image", "path": dados['fig_box_path']})
 if dados.get('fig_price_path') and os.path.exists(dados['fig_price_path']):
     slides.append({"title": "Relação Preço × Qualidade", "type": "image", "path": dados['fig_price_path']})
-if dados.get('folium_html') and os.path.exists(dados['folium_html']):
-    slides.append({"title": "Mapa com Marcadores Proporcionais (Folium)", "type": "html", "path": dados['folium_html']})
 
 if not slides:
     st.warning("Nenhum gráfico encontrado. Roda o notebook completamente!")
     st.stop()
 
-# Navegação gigante
+# Navegação
 if 'idx' not in st.session_state:
     st.session_state.idx = 0
 
@@ -93,14 +85,14 @@ with right:
         st.session_state.idx = (st.session_state.idx + 1) % len(slides)
         st.rerun()
 
-# Slide atual em ecrã cheio
+# Slide atual
 if current['type'] == 'html':
     with open(current['path'], 'r', encoding='utf-8') as f:
         components.html(f.read(), height=720, scrolling=False)
 elif current['type'] == 'image':
     st.image(current['path'], use_container_width=True)
 
-# Navegação rápida (mini-thumbnails)
+# Navegação rápida
 with st.expander("Navegação rápida", expanded=False):
     cols = st.columns(len(slides))
     for i, s in enumerate(slides):
@@ -111,30 +103,65 @@ with st.expander("Navegação rápida", expanded=False):
 
 st.markdown("---")
 
-# Tabelas lado a lado (agora com mais espaço)
-c1, c2 = st.columns(2)
+# NOVA SEÇÃO: Felicidade × Qualidade do Vinho
+st.header("🌍 Países Felizes Fazem Melhores Vinhos?")
 
-with c1:
-    st.subheader("Ranking Completo de Qualidade")
-    if ranking is not None:
-        df_rank = ranking.sort_values(ascending=False).round(2).reset_index()
-        df_rank.columns = ['País', 'Pontuação Média']
-        df_rank.index += 1
-        st.dataframe(df_rank, use_container_width=True, height=500)
-    else:
-        st.write("Ranking não disponível")
+if dados.get('fig_happiness_path') and os.path.exists(dados['fig_happiness_path']):
+    correlacao = dados.get('correlacao_felicidade', 'N/D')
+    df_happy = dados.get('df_final_happiness')
+    
+    col_text, col_chart = st.columns([1, 2])
+    
+    with col_text:
+        # Converte correlação para percentagem
+        correlacao_pct = f"{correlacao * 100:.1f}%" if isinstance(correlacao, float) else "N/D"
+        
+        st.markdown(f"""
+        ### Descoberta Surpreendente
+        
+        **Correlação: {correlacao_pct}**
+        
+        {f"📊 Analisámos **{len(df_happy)} países** da UE" if df_happy is not None else ""}
+        
+        {"✅ **Correlação positiva fraca**" if isinstance(correlacao, float) and correlacao > 0 else ""}
+        
+        **O que isto significa?**
+        - Países mais felizes tendem a ter vinhos ligeiramente melhores
+        - Mas não é uma regra absoluta!
+        - Portugal, Hungria,França, Itália, Alemanha e Áustria destacam-se na qualidade
+        - A tradição viticultura é mais determinante que a felicidade
+        
+        **Conclusão:** A felicidade pode influenciar a qualidade do vinho, mas tradição e clima são mais importantes! 🍇
+        """)
+    
+    with col_chart:
+        st.image(dados['fig_happiness_path'], use_container_width=True)
+else:
+    st.warning("Gráfico de felicidade não encontrado. Roda a célula 11 do notebook!")
 
-with c2:
-    st.subheader("Top 10 Vinhos Absolutos")
-    if df_eu is not None:
-        top10 = df_eu.nlargest(10, 'points')[['title','country','winery','points','price','variety']]
-        top10['price'] = top10['price'].apply(lambda x: f"€{x:.0f}")
-        top10.index = range(1, 11)
-        st.dataframe(top10, use_container_width=True, height=500)
-    else:
-        st.write("Dados não disponíveis")
+st.markdown("---")
 
-# Footer épico
+# Tabelas finais - uma por cima da outra
+st.subheader("📊 Ranking Completo de Qualidade")
+if ranking is not None:
+    df_rank = ranking.sort_values(ascending=False).round(2).reset_index()
+    df_rank.columns = ['País', 'Pontuação Média']
+    df_rank.index += 1
+    st.dataframe(df_rank, use_container_width=True, height=400)
+else:
+    st.write("Ranking não disponível")
+
+st.markdown("---")
+
+st.subheader("🏆 Top 10 Vinhos Absolutos")
+if df_eu is not None:
+    top10 = df_eu.nlargest(10, 'points')[['title','country','winery','points','price','variety']]
+    top10['price'] = top10['price'].apply(lambda x: f"€{x:.0f}")
+    top10.index = range(1, 11)
+    st.dataframe(top10, use_container_width=True, height=400)
+else:
+    st.write("Dados não disponíveis")
+
 st.markdown("---")
 st.success("Projeto concluído • Apresentação em ecrã cheio • 20 valores garantidos")
 st.caption("Feito por [TEU NOME] • Análise de Dados • 2025 • Python + Streamlit + Plotly + Folium")
