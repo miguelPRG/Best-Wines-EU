@@ -163,5 +163,4 @@ else:
     st.write("Dados não disponíveis")
 
 st.markdown("---")
-st.success("Projeto concluído • Apresentação em ecrã cheio • 20 valores garantidos")
-st.caption("Feito por [TEU NOME] • Análise de Dados • 2025 • Python + Streamlit + Plotly + Folium")
+st.caption("Feito por Miguel Gonçalves • Análise de Dados • 2025 • Python + Streamlit + Plotly + Folium")
