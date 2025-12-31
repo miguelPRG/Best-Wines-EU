@@ -1,22 +1,22 @@
 [project]
-name = "projeto"
+name = "best-wines-eu"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
     "folium>=0.20.0",
     "geopy>=2.4.1",
-    "matplotlib>=3.10.7",
-    "numpy>=2.3.5",
+    "matplotlib>=3.10.8",
+    "numpy>=2.2.6",
     "pandas>=2.3.3",
+    "papermill>=2.6.0",
+    "plotly>=6.5.2",
     "seaborn>=0.13.2",
-    "streamlit<=1.51.0",
-    "plotly<=6.5.0",
-    "streamlit-jupyter>=0.3.1",
+    "streamlit>=1.54.0",
 ]
 
 [dependency-groups]
 dev = [
-    "streamlit-jupyter>=0.3.1",
+    "ipykernel>=7.2.0",
 ]
