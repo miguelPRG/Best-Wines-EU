@@ -1,11 +1,17 @@
-# app.py – VERSÃO FINAL COM LARGURA MÁXIMA + FELICIDADE
 import streamlit as st
 import pickle
 import os
 import streamlit.components.v1 as components
+import subprocess, sys, pathlib
 
+# ============================================================================
+# CONFIGURAÇÃO INICIAL DA PÁGINA
+# ============================================================================
+
+# Define configurações globais da página (deve ser a primeira chamada Streamlit)
 st.set_page_config(page_title="Melhores Vinhos da UE", layout="wide")
 
+# CSS customizado para controlar largura e padding da página
 st.markdown("""
 <style>
     .block-container {
@@ -22,21 +28,72 @@ st.markdown("""
 
 PICKLE_PATH = 'dados_notebook.pkl'
 
+def run_notebook():
+    st.info("Gerando dados a partir do notebook, aguarde...")
+    nb_path = pathlib.Path("main.ipynb")
+    if not nb_path.exists():
+        st.error("main.ipynb não encontrado.")
+        st.stop()
+    try:
+        res = subprocess.run(
+            [sys.executable, "-m", "papermill", "main.ipynb", "main.out.ipynb"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        st.success("Notebook executado com sucesso.")
+    except subprocess.CalledProcessError as e:
+        st.error(f"Erro ao executar o notebook: {e}\n\nstdout:\n{e.stdout}\n\nstderr:\n{e.stderr}")
+        st.stop()
+
+def assets_ok(dados):
+    if not dados:
+        return False
+    paths = []
+    for key in ("fig_mapa_html", "fig_qp_path", "fig_box_path", "fig_price_path", "fig_happiness_path"):
+        p = dados.get(key)
+        if p:
+            paths.append(p)
+    return all(os.path.exists(p) for p in paths)
+
+def ensure_pickle():
+    # se não existe, roda notebook
+    if not os.path.exists(PICKLE_PATH):
+        run_notebook()
+        return
+    # se existe mas não tem gráficos, força regenerar
+    try:
+        with open(PICKLE_PATH, 'rb') as f:
+            dados_tmp = pickle.load(f)
+        if not assets_ok(dados_tmp):
+            run_notebook()
+    except Exception:
+        run_notebook()
+
+ensure_pickle()
+
+# ============================================================================
+# CABEÇALHO E CARREGAMENTO DE DADOS
+# ============================================================================
+
 st.title("Melhores Vinhos da União Europeia em 2025 🍷🇪🇺")
 st.markdown("**Análise completa • 100% processada no Jupyter Notebook • Apresentação em ecrã cheio**")
 
+# Verifica se o arquivo pickle existe (notebook precisa ser executado primeiro)
 if not os.path.exists(PICKLE_PATH):
     st.error(f"Não encontrado: `{PICKLE_PATH}`\n\nRoda o notebook até ao fim primeiro!")
     st.stop()
 
+# Carrega todos os dados pré-processados do notebook
 with open(PICKLE_PATH, 'rb') as f:
     dados = pickle.load(f)
 
-df_eu = dados.get('df_eu')
-ranking = dados.get('ranking')
-top_pais = dados.get('top_pais', 'N/D')
-top_pts = dados.get('top_pts')
-melhor_qp = dados.get('melhor_qp', 'N/D')
+# Extrai objetos principais do dicionário
+df_eu = dados.get('df_eu')          # DataFrame completo dos vinhos da UE
+ranking = dados.get('ranking')       # Série com pontuação média por país
+top_pais = dados.get('top_pais', 'N/D')  # País com melhor pontuação média
+top_pts = dados.get('top_pts')      # Pontuação do melhor país
+melhor_qp = dados.get('melhor_qp', 'N/D')  # País com melhor custo-benefício
 
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("Melhor qualidade média", top_pais, f"{top_pts} pts" if top_pts else "")
@@ -65,7 +122,7 @@ if not slides:
 
 # Navegação
 if 'idx' not in st.session_state:
-    st.session_state.idx = 0
+    st.session_state.idx = 0  # guarda o slide atual entre interações
 
 left, center, right = st.columns([1, 6, 1])
 current = slides[st.session_state.idx]
@@ -153,12 +210,163 @@ else:
 
 st.markdown("---")
 
-st.subheader("🏆 Top 10 Vinhos Absolutos")
+st.subheader("🔍 Explorador de Vinhos da UE")
+
 if df_eu is not None:
-    top10 = df_eu.nlargest(10, 'points')[['title','country','winery','points','price','variety']]
-    top10['price'] = top10['price'].apply(lambda x: f"€{x:.0f}")
-    top10.index = range(1, 11)
-    st.dataframe(top10, use_container_width=True, height=400)
+    # Criar uma cópia para não alterar os dados originais
+    df_filtrado = df_eu.copy()
+    
+    # Linha 1: Search Box
+    search_term = st.text_input("🔎 Pesquisar vinhos (título, vinícola, variedade, região)", 
+                                placeholder="Ex: Bordeaux, Chianti, Douro...")
+    
+    # Linha 2: Filtros em colunas (agora dinâmicos)
+    col_f1, col_f2, col_f3 = st.columns(3)
+    
+    with col_f1:
+        paises_disponiveis = sorted(df_eu['country'].unique())
+        paises_selecionados = st.multiselect(
+            "🌍 Países", 
+            options=paises_disponiveis,
+            default=[],
+            key="paises"
+        )
+    
+    # Filtrar dataset base conforme países selecionados
+    df_para_filtros = df_eu.copy()
+    if paises_selecionados:
+        df_para_filtros = df_para_filtros[df_para_filtros['country'].isin(paises_selecionados)]
+    
+    with col_f2:
+        vinicolas_disponiveis = sorted(df_para_filtros['winery'].dropna().unique())
+        vinicolas_selecionadas = st.multiselect(
+            "🏛️ Vinícolas",
+            options=vinicolas_disponiveis,
+            default=[],
+            key="vinicolas"
+        )
+    
+    # Filtrar mais conforme vinícolas selecionadas
+    if vinicolas_selecionadas:
+        df_para_filtros = df_para_filtros[df_para_filtros['winery'].isin(vinicolas_selecionadas)]
+    
+    with col_f3:
+        variedades_disponiveis = sorted(df_para_filtros['variety'].dropna().unique())
+        variedades_selecionadas = st.multiselect(
+            "🍇 Variedades",
+            options=variedades_disponiveis,
+            default=[],
+            key="variedades"
+        )
+    
+    # Linha 3: Sliders de preço e pontuação
+    col_f4, col_f5 = st.columns(2)
+    
+    with col_f4:
+        preco_min = float(df_eu['price'].min())
+        preco_max = float(df_eu['price'].max())
+        preco_range = st.slider(
+            "💰 Preço (€)",
+            min_value=preco_min,
+            max_value=preco_max,
+            value=(preco_min, preco_max),
+            step=1.0
+        )
+    
+    with col_f5:
+        pontos_min = int(df_eu['points'].min())
+        pontos_max = int(df_eu['points'].max())
+        pontos_range = st.slider(
+            "⭐ Pontuação",
+            min_value=pontos_min,
+            max_value=pontos_max,
+            value=(pontos_min, pontos_max)
+        )
+    
+    # Aplicar filtros (sequência mantém clareza do funil)
+    if search_term:
+        mascara_search = (
+            df_filtrado['title'].str.contains(search_term, case=False, na=False) |
+            df_filtrado['winery'].str.contains(search_term, case=False, na=False) |
+            df_filtrado['variety'].str.contains(search_term, case=False, na=False) |
+            df_filtrado['province'].str.contains(search_term, case=False, na=False)
+        )
+        df_filtrado = df_filtrado[mascara_search]
+    
+    if paises_selecionados:
+        df_filtrado = df_filtrado[df_filtrado['country'].isin(paises_selecionados)]
+    
+    if vinicolas_selecionadas:
+        df_filtrado = df_filtrado[df_filtrado['winery'].isin(vinicolas_selecionadas)]
+    
+    if variedades_selecionadas:
+        df_filtrado = df_filtrado[df_filtrado['variety'].isin(variedades_selecionadas)]
+    
+    df_filtrado = df_filtrado[
+        (df_filtrado['price'] >= preco_range[0]) & 
+        (df_filtrado['price'] <= preco_range[1])
+    ]
+    
+    df_filtrado = df_filtrado[
+        (df_filtrado['points'] >= pontos_range[0]) & 
+        (df_filtrado['points'] <= pontos_range[1])
+    ]
+    
+    # Ordenação
+    col_ord1, col_ord2 = st.columns([3, 1])
+    with col_ord1:
+        ordem = st.selectbox(
+            "📊 Ordenar por",
+            options=['Pontuação (maior)', 'Pontuação (menor)', 'Preço (maior)', 'Preço (menor)', 'Melhor Qualidade/Preço'],
+            index=0
+        )
+    
+    with col_ord2:
+        max_linhas = min(500, len(df_filtrado))
+        min_linhas = min(10, max_linhas)
+        valor_padrao = min(50, max_linhas)
+        
+        num_resultados = st.number_input(
+            "Mostrar linhas",
+            min_value=min_linhas,
+            max_value=max_linhas,
+            value=valor_padrao,
+            step=10
+        )
+    
+    # Aplicar ordenação
+    if ordem == 'Pontuação (maior)':
+        df_filtrado = df_filtrado.sort_values('points', ascending=False)
+    elif ordem == 'Pontuação (menor)':
+        df_filtrado = df_filtrado.sort_values('points', ascending=True)
+    elif ordem == 'Preço (maior)':
+        df_filtrado = df_filtrado.sort_values('price', ascending=False)
+    elif ordem == 'Preço (menor)':
+        df_filtrado = df_filtrado.sort_values('price', ascending=True)
+    elif ordem == 'Melhor Qualidade/Preço':
+        df_filtrado = df_filtrado.sort_values('points_per_euro', ascending=False)
+    
+    # Mostrar resultados
+    st.markdown(f"**{len(df_filtrado):,} vinhos encontrados** (a mostrar {min(num_resultados, len(df_filtrado))})")
+    
+    if len(df_filtrado) > 0:
+        # Preparar tabela para exibição
+        df_display = df_filtrado.head(num_resultados)[['title','country','winery','variety','province','points','price','points_per_euro']].copy()
+        df_display.columns = ['Vinho', 'País', 'Vinícola', 'Variedade', 'Região', 'Pontos', 'Preço (€)', 'Pts/€']
+        df_display['Preço (€)'] = df_display['Preço (€)'].apply(lambda x: f"€{x:.0f}")
+        df_display['Pts/€'] = df_display['Pts/€'].apply(lambda x: f"{x:.3f}")
+        df_display.index = range(1, len(df_display) + 1)
+        
+        st.dataframe(df_display, use_container_width=True, height=600)
+        
+        # Estatísticas dos resultados filtrados
+        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        col_stat1.metric("Preço médio", f"€{df_filtrado['price'].mean():.1f}")
+        col_stat2.metric("Pontuação média", f"{df_filtrado['points'].mean():.1f}")
+        col_stat3.metric("Preço máximo", f"€{df_filtrado['price'].max():.0f}")
+        col_stat4.metric("Pontuação máxima", f"{df_filtrado['points'].max():.0f}")
+    else:
+        st.warning("Nenhum vinho encontrado com estes filtros. Tente ajustar os critérios.")
 else:
     st.write("Dados não disponíveis")
 
